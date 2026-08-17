@@ -2,7 +2,7 @@
 name: hyperframes-cli
 description: >
   Use the HyperFrames CLI development loop: init, add, catalog, capture, lint, check, snapshot,
-  compare, grade-compare, preview, play, present, beats, keyframes, single or batch render, publish,
+  compare, grade-compare, preview, play, present, beats, keyframes, single or batch render, layer-render, publish,
   cloud, cloudrun, feedback, lambda, doctor, browser, info, upgrade, skills, compositions, docs,
   benchmark, telemetry, transcribe, auth, tts, and remove-background. Also use when diagnosing build
   or render failures. validate, inspect, and layout are deprecated aliases; use check. Covers local,
@@ -100,6 +100,7 @@ Use `selection.target.hfId` when available, otherwise its selector and source fi
 | Final local delivery                     | `npx hyperframes render --quality high --output out.mp4`                      |
 | Reproducible container render            | `npx hyperframes render --docker --strict --output out.mp4`                   |
 | Local variable-driven batch render       | `npx hyperframes render --batch rows.json --output "renders/{name}.mp4"`      |
+| Layer-structured faster local render     | `npx hyperframes layer-render index.html -o out.mp4 --fps 30`                 |
 | HeyGen-hosted zero-infrastructure render | `npx hyperframes cloud render`                                                |
 | Self-managed distributed AWS render      | `npx hyperframes lambda render <project> --width 1920 --height 1080 --wait`   |
 | Self-managed distributed GCP render      | `npx hyperframes cloudrun render <project> --width 1920 --height 1080 --wait` |

@@ -3,8 +3,8 @@
  */
 
 import { runFfmpeg } from "@hyperframes/engine";
-import { readFileSync, writeFileSync, mkdirSync } from "fs";
-import { join, resolve } from "path";
+import { readFileSync, writeFileSync, mkdirSync, copyFileSync, existsSync, readdirSync } from "fs";
+import { join, resolve, dirname } from "path";
 import { buildCompositeArgs } from "./compose.js";
 import { resolveCompositeCodec } from "./codec.js";
 import { buildMainLayerHtml, needsMainLayerRender } from "./mainLayer.js";
@@ -15,6 +15,7 @@ import { substituteVariables, type VariableMap } from "./variables.js";
 import type {
   LayerComposition,
   LayerRenderResult,
+  LayerSummary,
   PrerenderResult,
   RenderProgressCallback,
 } from "./types.js";
@@ -61,12 +62,15 @@ export async function renderLayerComposition(
   const assetsDir = join(workDir, "assets");
   mkdirSync(assetsDir, { recursive: true });
 
+  // Materialized sub-compositions inject a relative `gsap.min.js` next to the
+  // standalone HTML (written into `projectDir`). Ensure the real file is present
+  // there so the pre-render browser can load it (the package does not bundle gsap).
+  ensureGsapAsset(projectDir);
+
   // Pre-render each layer that needs capturing (dynamic / loop / static).
   const prerenderStart = Date.now();
   const prerendered: PrerenderResult[] = [];
-  const layersToPrerender = composition.layers.filter(
-    (layer) => layer.kind !== "background",
-  );
+  const layersToPrerender = composition.layers.filter((layer) => layer.kind !== "background");
   const totalLayers = layersToPrerender.length || 1;
   for (const [index, layer] of layersToPrerender.entries()) {
     onProgress({
@@ -103,9 +107,7 @@ export async function renderLayerComposition(
     carryAudio: composition.background.carryAudio,
   });
   const args = buildCompositeArgs(composition, assetPaths, outputPath, compositeCodec);
-  log(
-    `[ffmpeg-layer-renderer] composite ${composition.layers.length} layer(s) → ${outputPath}`,
-  );
+  log(`[ffmpeg-layer-renderer] composite ${composition.layers.length} layer(s) → ${outputPath}`);
   onProgress({ progress: 85, stage: "composite" });
   const compositeStart = Date.now();
   const result = await runFfmpeg(args);
@@ -116,7 +118,26 @@ export async function renderLayerComposition(
     throw new Error(`FFmpeg composite failed (exit ${result.exitCode}): ${result.stderr}`);
   }
 
-  return { outputPath, compositeMs, prerenderMs };
+  const layers: LayerSummary[] = [
+    {
+      role: "background",
+      source: composition.background.htmlPath || composition.background.mediaPath,
+      id: "background",
+    },
+    ...composition.layers.map((layer) => ({
+      role: layer.kind,
+      source: layer.htmlPath ?? "",
+      id: layer.id,
+    })),
+  ];
+
+  return {
+    outputPath,
+    compositeMs,
+    prerenderMs,
+    layers,
+    scaleMode: "fit",
+  };
 }
 
 export interface RenderCompositionFromHtmlOptions {
@@ -239,4 +260,44 @@ export async function renderCompositionFromHtml(
         stage: update.stage,
       }),
   });
+}
+
+/**
+ * Find the real gsap.min.js on disk (the package does not bundle it) and copy
+ * it into `dir` so materialized sub-compositions can load it via a relative
+ * `gsap.min.js` reference. Walks up from `dir` toward the filesystem root,
+ * checking the bun and npm `node_modules` layouts.
+ */
+function ensureGsapAsset(dir: string): void {
+  const dest = join(dir, "gsap.min.js");
+  if (existsSync(dest)) return;
+
+  let cursor = resolve(dir);
+  for (;;) {
+    const candidates = [
+      join(cursor, "node_modules", "gsap", "dist", "gsap.min.js"),
+      join(cursor, "node_modules", ".bun", "gsap", "dist", "gsap.min.js"),
+    ];
+    for (const candidate of candidates) {
+      if (existsSync(candidate)) {
+        copyFileSync(candidate, dest);
+        return;
+      }
+    }
+    // bun caches gsap under node_modules/.bun/gsap@<ver>/node_modules/gsap/dist
+    const bunRoot = join(cursor, "node_modules", ".bun");
+    if (existsSync(bunRoot)) {
+      for (const entry of readdirSync(bunRoot)) {
+        const candidate = join(bunRoot, entry, "node_modules", "gsap", "dist", "gsap.min.js");
+        if (existsSync(candidate)) {
+          copyFileSync(candidate, dest);
+          return;
+        }
+      }
+    }
+
+    const parent = dirname(cursor);
+    if (parent === cursor) break;
+    cursor = parent;
+  }
 }

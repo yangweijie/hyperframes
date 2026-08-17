@@ -54,12 +54,7 @@ export type LayerKind =
    */
   | "background";
 
-export type OverlayBlendMode =
-  | "normal"
-  | "screen"
-  | "multiply"
-  | "overlay"
-  | "add";
+export type OverlayBlendMode = "normal" | "screen" | "multiply" | "overlay" | "add";
 
 export interface BackgroundSpec {
   /** Media path (video or image) used as the base layer. */
@@ -108,6 +103,25 @@ export interface LayerRenderResult {
   compositeMs: number;
   /** Wall-clock milliseconds for all pre-render stages combined. */
   prerenderMs: number;
+  /**
+   * Per-layer summary for reporting. The first entry is the background
+   * (referenced by `composition.background`), followed by one entry per
+   * pre-rendered sub-composition layer. `role` distinguishes the opaque
+   * background from the transparent overlay layers.
+   */
+  layers: LayerSummary[];
+  /** Scale mode applied to the transparent layers. */
+  scaleMode: "fit" | "fill" | "stretch";
+}
+
+/** One-line description of a single layer, for reporting/observability. */
+export interface LayerSummary {
+  /** "background" for the opaque base, or the layer `kind` for overlays. */
+  role: string;
+  /** Source path (background media/html, or sub-composition html). */
+  source: string;
+  /** Layer id (matches `LayerSpec.id`). */
+  id: string;
 }
 
 /** A single progress update emitted during rendering. */

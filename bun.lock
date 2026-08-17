@@ -24,7 +24,7 @@
     },
     "packages/aws-lambda": {
       "name": "@hyperframes/aws-lambda",
-      "version": "0.7.105",
+      "version": "0.7.109",
       "dependencies": {
         "@aws-sdk/client-s3": "^3.700.0",
         "@aws-sdk/client-sfn": "^3.700.0",
@@ -57,7 +57,7 @@
     },
     "packages/cli": {
       "name": "@hyperframes/cli",
-      "version": "0.7.105",
+      "version": "0.7.109",
       "bin": {
         "hyperframes": "./bin/hyperframes.mjs",
       },
@@ -85,6 +85,7 @@
         "@hyperframes/aws-lambda": "workspace:*",
         "@hyperframes/core": "workspace:*",
         "@hyperframes/engine": "workspace:*",
+        "@hyperframes/ffmpeg-layer-renderer": "workspace:*",
         "@hyperframes/gcp-cloud-run": "workspace:*",
         "@hyperframes/lint": "workspace:*",
         "@hyperframes/parsers": "workspace:*",
@@ -107,7 +108,7 @@
     },
     "packages/core": {
       "name": "@hyperframes/core",
-      "version": "0.7.105",
+      "version": "0.7.109",
       "dependencies": {
         "@chenglou/pretext": "^0.0.5",
         "@hyperframes/lint": "workspace:*",
@@ -132,7 +133,7 @@
     },
     "packages/engine": {
       "name": "@hyperframes/engine",
-      "version": "0.7.105",
+      "version": "0.7.109",
       "dependencies": {
         "@hono/node-server": "^2.0.5",
         "@hyperframes/core": "workspace:^",
@@ -149,9 +150,23 @@
         "vitest": "^3.2.4",
       },
     },
+    "packages/ffmpeg-layer-renderer": {
+      "name": "@hyperframes/ffmpeg-layer-renderer",
+      "version": "0.1.0",
+      "dependencies": {
+        "@hyperframes/engine": "workspace:^",
+        "@hyperframes/producer": "workspace:^",
+        "linkedom": "^0.18.12",
+      },
+      "devDependencies": {
+        "@types/node": "^25.0.10",
+        "typescript": "^5.7.2",
+        "vitest": "^3.2.4",
+      },
+    },
     "packages/gcp-cloud-run": {
       "name": "@hyperframes/gcp-cloud-run",
-      "version": "0.7.105",
+      "version": "0.7.109",
       "dependencies": {
         "@google-cloud/storage": "^7.14.0",
         "@google-cloud/workflows": "^4.2.0",
@@ -172,7 +187,7 @@
     },
     "packages/lint": {
       "name": "@hyperframes/lint",
-      "version": "0.7.105",
+      "version": "0.7.109",
       "dependencies": {
         "@hyperframes/parsers": "workspace:*",
         "htmlparser2": "^10.1.0",
@@ -190,7 +205,7 @@
     },
     "packages/parsers": {
       "name": "@hyperframes/parsers",
-      "version": "0.7.105",
+      "version": "0.7.109",
       "dependencies": {
         "@babel/parser": "^7.27.0",
         "acorn": "^8.17.0",
@@ -210,7 +225,7 @@
     },
     "packages/player": {
       "name": "@hyperframes/player",
-      "version": "0.7.105",
+      "version": "0.7.109",
       "dependencies": {
         "@hyperframes/core": "workspace:*",
       },
@@ -225,7 +240,7 @@
     },
     "packages/producer": {
       "name": "@hyperframes/producer",
-      "version": "0.7.105",
+      "version": "0.7.109",
       "dependencies": {
         "@fontsource/archivo-black": "^5.2.8",
         "@fontsource/eb-garamond": "^5.2.7",
@@ -270,7 +285,7 @@
     },
     "packages/sdk": {
       "name": "@hyperframes/sdk",
-      "version": "0.7.105",
+      "version": "0.7.109",
       "dependencies": {
         "@hyperframes/core": "workspace:*",
         "@hyperframes/parsers": "workspace:*",
@@ -300,7 +315,7 @@
     },
     "packages/shader-transitions": {
       "name": "@hyperframes/shader-transitions",
-      "version": "0.7.105",
+      "version": "0.7.109",
       "dependencies": {
         "html2canvas": "^1.4.1",
       },
@@ -312,7 +327,7 @@
     },
     "packages/studio": {
       "name": "@hyperframes/studio",
-      "version": "0.7.105",
+      "version": "0.7.109",
       "dependencies": {
         "@codemirror/autocomplete": "^6.20.1",
         "@codemirror/commands": "^6.10.3",
@@ -363,7 +378,7 @@
     },
     "packages/studio-server": {
       "name": "@hyperframes/studio-server",
-      "version": "0.7.105",
+      "version": "0.7.109",
       "dependencies": {
         "@hyperframes/core": "workspace:*",
         "@hyperframes/parsers": "workspace:*",
@@ -735,6 +750,8 @@
     "@hyperframes/core": ["@hyperframes/core@workspace:packages/core"],
 
     "@hyperframes/engine": ["@hyperframes/engine@workspace:packages/engine"],
+
+    "@hyperframes/ffmpeg-layer-renderer": ["@hyperframes/ffmpeg-layer-renderer@workspace:packages/ffmpeg-layer-renderer"],
 
     "@hyperframes/gcp-cloud-run": ["@hyperframes/gcp-cloud-run@workspace:packages/gcp-cloud-run"],
 

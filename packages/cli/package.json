@@ -52,6 +52,7 @@
     "@hyperframes/aws-lambda": "workspace:*",
     "@hyperframes/core": "workspace:*",
     "@hyperframes/engine": "workspace:*",
+    "@hyperframes/ffmpeg-layer-renderer": "workspace:*",
     "@hyperframes/gcp-cloud-run": "workspace:*",
     "@hyperframes/lint": "workspace:*",
     "@hyperframes/parsers": "workspace:*",

@@ -179,9 +179,9 @@ test-outputs/
 docs/superpowers/
 .worktrees
 hyperframes-bench/
-tmp/
 # Studio-generated preview thumbnails
 .thumbnails/
 
 # Local editor settings
 .zed/
+/product-launch/

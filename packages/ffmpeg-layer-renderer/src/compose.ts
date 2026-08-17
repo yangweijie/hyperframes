@@ -25,19 +25,14 @@ import type { CompositeCodec } from "./codec.js";
  *   inside the graph builder but kept to keep the two helpers' signatures
  *   symmetric for callers.
  */
-export function buildFilterComplex(
-  composition: LayerComposition,
-  _assetPaths: string[],
-): string {
+export function buildFilterComplex(composition: LayerComposition, _assetPaths: string[]): string {
   const { background } = composition;
   const parts: string[] = [];
 
   // Scale the background to the target composition size. The background may
   // be authored at a different resolution than the composition (e.g. a 720×1280
   // a-roll video inside a 1080×1920 composition), so normalize it first.
-  parts.push(
-    `[0:v]scale=${background.width}:${background.height}:flags=lanczos[bgscaled]`,
-  );
+  parts.push(`[0:v]scale=${background.width}:${background.height}:flags=lanczos[bgscaled]`);
   let canvas = "bgscaled";
 
   composition.layers.forEach((layer, index) => {
@@ -66,10 +61,11 @@ export function buildFilterComplex(
       `x=${layer.x ?? 0}`,
       `y=${layer.y ?? 0}`,
       `enable='${enable}'`,
-      // Explicit yuva420 so alpha is honored even when the background is
-      // opaque (yuv420p). `format=auto` silently drops the foreground alpha
-      // in that mixed case, producing opaque garbage in transparent regions.
-      "format=yuva420",
+      // `auto` lets the overlay filter pick a format that preserves the
+      // foreground alpha (it internally uses yuva420p when the overlay carries
+      // alpha). An explicit `yuva420p` is rejected by overlay's `format` enum,
+      // while `yuv420` would silently drop the alpha → opaque garbage.
+      "format=auto",
       blend,
     ]
       .filter(Boolean)
