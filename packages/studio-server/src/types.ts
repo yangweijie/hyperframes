@@ -171,6 +171,11 @@ export interface StudioApiAdapter {
      * clients → falls back to the install's anonymous id.
      */
     distinctId?: string;
+    /**
+     * Render engine: `"standard"` (default, producer) or `"layer"`
+     * (ffmpeg-layer-renderer).
+     */
+    engine?: "standard" | "layer";
   }): RenderJobState;
 
   startBackgroundRemoval?: (opts: {

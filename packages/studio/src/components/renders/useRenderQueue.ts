@@ -36,6 +36,8 @@ export interface StartRenderOptions {
    * `hyperframes render --variables` uses.
    */
   variables?: Record<string, unknown>;
+  /** Render engine: `"standard"` (default) or `"layer"` (ffmpeg-layer-renderer). */
+  engine?: "standard" | "layer";
 }
 
 // "Hide" (formerly "Clear") is a view operation, not a delete: hidden ids are
@@ -188,6 +190,7 @@ export function useRenderQueue(projectId: string | null) {
         variables?: Record<string, unknown>;
         telemetryDistinctId?: string;
         telemetryOptOut?: boolean;
+        engine?: "standard" | "layer";
       } = {
         fps,
         quality,
@@ -210,6 +213,7 @@ export function useRenderQueue(projectId: string | null) {
       }
       if (resolution && resolution !== "auto") body.resolution = resolution;
       if (composition) body.composition = composition;
+      if (opts.engine && opts.engine !== "standard") body.engine = opts.engine;
       if (opts.variables && Object.keys(opts.variables).length > 0) {
         body.variables = opts.variables;
       }

@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=1920, height=1080">
+    <title>ffmpeg-layer-renderer 技术介绍</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      @font-face { font-family: "PingFang SC"; src: local("PingFang SC"); }
+      @font-face { font-family: "Microsoft YaHei"; src: local("Microsoft YaHei"); }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background: #070a0f;
+        color: #e8eef6;
+        font-family: "Inter", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+        overflow: hidden;
+      }
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background:
+          radial-gradient(1200px 700px at 78% -10%, rgba(56,189,248,0.18), transparent 60%),
+          radial-gradient(1000px 800px at -5% 110%, rgba(168,85,247,0.16), transparent 55%),
+          #070a0f;
+      }
+      .clip {
+        position: absolute;
+        inset: 0;
+        opacity: 1;
+      }
+      .clip.chapter {
+        background: #070a0f;
+      }
+      .grid-bg {
+        position: absolute;
+        inset: 0;
+        background-image:
+          linear-gradient(rgba(255,255,255,0.035) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(255,255,255,0.035) 1px, transparent 1px);
+        background-size: 64px 64px;
+        pointer-events: none;
+      }
+      .chapter {
+        font-size: 22px;
+        letter-spacing: 0.32em;
+        text-transform: uppercase;
+        color: #38bdf8;
+        font-weight: 600;
+        margin: 0 0 18px;
+      }
+      .slide {
+        padding: 80px 120px 170px 120px;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+      }
+      .kicker {
+        font-size: 28px;
+        color: #94a3b8;
+        margin: 0 0 18px;
+        letter-spacing: 0.04em;
+      }
+      .title {
+        font-size: 88px;
+        line-height: 1.05;
+        margin: 0 0 40px;
+        font-weight: 800;
+        letter-spacing: -0.01em;
+      }
+      .title .hl { color: #38bdf8; }
+      .title .hl2 { color: #a855f7; }
+      .body {
+        font-size: 34px;
+        line-height: 1.55;
+        color: #cbd5e1;
+        margin: 0;
+        max-width: 1500px;
+      }
+      .body b { color: #f1f5f9; }
+      .pill {
+        display: inline-block;
+        margin: 0 14px 14px 0;
+        padding: 12px 22px;
+        border-radius: 999px;
+        background: rgba(56,189,248,0.12);
+        border: 1px solid rgba(56,189,248,0.4);
+        color: #bae6fd;
+        font-size: 26px;
+        font-family: "JetBrains Mono", ui-monospace, monospace;
+      }
+      .pill.bad { background: rgba(248,113,113,0.12); border-color: rgba(248,113,113,0.45); color: #fecaca; }
+      .pill.good { background: rgba(74,222,128,0.12); border-color: rgba(74,222,128,0.45); color: #bbf7d0; }
+      .code {
+        margin-top: 26px;
+        padding: 22px 26px;
+        border-radius: 14px;
+        background: #0b1220;
+        border: 1px solid rgba(148,163,184,0.22);
+        color: #e2e8f0;
+        font-family: "JetBrains Mono", ui-monospace, monospace;
+        font-size: 30px;
+        line-height: 1.6;
+        max-width: 1500px;
+      }
+      .code .c { color: #64748b; }
+      .code .k { color: #a855f7; }
+      .code .p { color: #38bdf8; }
+      .metric {
+        display: inline-block;
+        vertical-align: top;
+        width: 360px;
+        margin: 0 30px 20px 0;
+        padding: 26px 28px;
+        border-radius: 16px;
+        background: rgba(15,23,42,0.7);
+        border: 1px solid rgba(56,189,248,0.25);
+      }
+      .metric .num { font-size: 64px; font-weight: 800; color: #38bdf8; line-height: 1; }
+      .metric .num.p { color: #a855f7; }
+      .metric .num.g { color: #4ade80; }
+      .metric .lab { margin-top: 10px; font-size: 24px; color: #94a3b8; }
+      .progress-track {
+        margin-top: 14px;
+        height: 12px;
+        width: 100%;
+        border-radius: 8px;
+        background: rgba(148,163,184,0.18);
+        overflow: hidden;
+      }
+      .progress-fill { height: 100%; width: 0%; border-radius: 8px;
+        background: linear-gradient(90deg, #38bdf8, #a855f7); }
+      .footer {
+        position: absolute;
+        left: 120px;
+        bottom: 48px;
+        font-size: 22px;
+        color: #475569;
+        font-family: "JetBrains Mono", ui-monospace, monospace;
+      }
+    </style>
+  </head>
+  <body>
+    <div data-hf-id="hf-jsml" id="root" data-composition-id="intro" data-start="0" data-width="1920" data-height="1080" data-duration="64">
+      <div data-hf-id="hf-q4u8" class="grid-bg"></div>
+
+      <!-- Chapter 1: 初衷 / Motivation -->
+      <section data-hf-id="hf-63mz" id="c1" class="clip chapter" data-start="0" data-duration="15" data-track-index="1">
+        <div data-hf-id="hf-1zdz" class="slide">
+          <div data-hf-id="hf-enzp" class="chapter" id="c1-chapter">01 · 初衷</div>
+          <p data-hf-id="hf-1t0i" class="kicker" id="c1-kicker">为什么要有这个包</p>
+          <h1 data-hf-id="hf-mjw7" class="title" id="c1-title">逐帧全页截图，<br data-hf-id="hf-x5px">太 <span data-hf-id="hf-i0fl" class="hl">慢</span> 了</h1>
+          <p data-hf-id="hf-pzmm" class="body" id="c1-body">
+            标准渲染把整页 HTML <b data-hf-id="hf-two7">每一帧</b> 都交给 Chromium 截图再编码。
+            背景静止、循环段重复——却要反复重绘、反复编码。
+            <b data-hf-id="hf-32oo">ffmpeg-layer-renderer</b> 的想法很简单：把画面拆成图层，
+            静态背景只抓一次，动态层预渲染成透明资产，最后用 ffmpeg <b data-hf-id="hf-r6w3">overlay</b> 合成。
+          </p>
+          <div data-hf-id="hf-cuuy" id="c1-pills">
+            <span data-hf-id="hf-r959" class="pill">data-composition-src 切层</span>
+            <span data-hf-id="hf-prhb" class="pill">ProRes 4444 透明资产</span>
+            <span data-hf-id="hf-2tpb" class="pill">ffmpeg overlay 合成</span>
+            <span data-hf-id="hf-mxjd" class="pill">GPU 硬件编码</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Chapter 2: 遇到问题 / Problems -->
+      <section data-hf-id="hf-psaq" id="c2" class="clip chapter" data-start="15" data-duration="18" data-track-index="2">
+        <div data-hf-id="hf-rnd3" class="slide">
+          <div data-hf-id="hf-rkp6" class="chapter" id="c2-chapter">02 · 遇到问题</div>
+          <p data-hf-id="hf-b29u" class="kicker" id="c2-kicker">踩过的坑</p>
+          <h1 data-hf-id="hf-h8nn" class="title" id="c2-title">三个<span data-hf-id="hf-s0j4" class="hl2">拦路虎</span></h1>
+          <div data-hf-id="hf-kw01" id="c2-pills">
+            <span data-hf-id="hf-cgst" class="pill bad">overlay: format=yuva420p 被拒</span>
+            <span data-hf-id="hf-laiv" class="pill bad">gsap 没随包 bundle</span>
+            <span data-hf-id="hf-xvwq" class="pill bad">headless-shell 启动失败</span>
+          </div>
+          <p data-hf-id="hf-rt7y" class="body" id="c2-body">
+            overlay 滤镜的 <b data-hf-id="hf-lwfm">format</b> 枚举不认 <b data-hf-id="hf-3dc8">yuva420p</b>，需改 <b data-hf-id="hf-syda">format=auto</b> 保留 alpha；
+            包不打包 gsap，要靠 <b data-hf-id="hf-9jns">ensureGsapAsset</b> 从 node_modules 复制；
+            Windows 上 chrome-headless-shell 缺失运行库，改用系统 <b data-hf-id="hf-hs1o">Edge</b> 注入。
+          </p>
+        </div>
+      </section>
+
+      <!-- Chapter 3: 解决后的效果 / Result -->
+      <section data-hf-id="hf-tsja" id="c3" class="clip chapter" data-start="33" data-duration="18" data-track-index="3">
+        <div data-hf-id="hf-r922" class="slide">
+          <div data-hf-id="hf-fc59" class="chapter" id="c3-chapter">03 · 解决后的效果</div>
+          <p data-hf-id="hf-zk75" class="kicker" id="c3-kicker">端到端跑通</p>
+          <h1 data-hf-id="hf-tcbo" class="title" id="c3-title">更快，且<span data-hf-id="hf-fhi1" class="hl">保真</span></h1>
+          <div data-hf-id="hf-6z2f" id="c3-metrics">
+            <div data-hf-id="hf-dq4c" class="metric"><div data-hf-id="hf-0kvt" class="num">3</div><div data-hf-id="hf-5yx2" class="lab">切出图层（1 背景 + 2 overlay）</div></div>
+            <div data-hf-id="hf-q6lw" class="metric"><div data-hf-id="hf-pqb4" class="num p">2.9s</div><div data-hf-id="hf-yb6t" class="lab">composite 合成耗时</div></div>
+            <div data-hf-id="hf-ozot" class="metric"><div data-hf-id="hf-hjui" class="num g">~30dB</div><div data-hf-id="hf-x6rl" class="lab">PSNR vs 整页渲染</div></div>
+          </div>
+          <div data-hf-id="hf-ol3r" class="progress-track" id="c3-bar"><div data-hf-id="hf-x64l" class="progress-fill" id="c3-fill"></div></div>
+          <p data-hf-id="hf-hjga" class="body" id="c3-body">
+            背景只预渲染一次，composite 由 ffmpeg 并行 overlay，比逐帧截图快数倍；
+            PSNR 落在官方 30dB 阈值附近，视觉无损。
+          </p>
+        </div>
+      </section>
+
+      <!-- Chapter 4: 如何使用 / Usage -->
+      <section data-hf-id="hf-jyhr" id="c4" class="clip chapter" data-start="51" data-duration="13" data-track-index="4">
+        <div data-hf-id="hf-qur1" class="slide">
+          <div data-hf-id="hf-pzr5" class="chapter" id="c4-chapter">04 · 如何使用</div>
+          <p data-hf-id="hf-wtvv" class="kicker" id="c4-kicker">两条路径</p>
+          <h1 data-hf-id="hf-p4bo" class="title" id="c4-title">一键<span data-hf-id="hf-lrtb" class="hl">导出</span></h1>
+          <div data-hf-id="hf-lcfs" class="code" id="c4-cmd">
+<span data-hf-id="hf-uc1x" class="c"># CLI · 只用 ffmpeg 加速路径</span><br data-hf-id="hf-rsrt">
+<span data-hf-id="hf-ffu7" class="p">npx hyperframes</span> layer-render index.html <span data-hf-id="hf-4mak" class="k">-o</span> out.mp4 <span data-hf-id="hf-ltd1" class="k">--fps</span> 30
+          </div>
+          <p data-hf-id="hf-pcl8" class="body" id="c4-body">
+            或在 <b data-hf-id="hf-5tz7">Studio</b> 里点 <b data-hf-id="hf-w3b7">“Export with FFmpeg”</b> 按钮（engine: layer），
+            走图层化渲染——同一引擎，无需改组合结构。
+          </p>
+        </div>
+      </section>
+
+      <div data-hf-id="hf-9e9o" class="footer" data-hidden="">@hyperframes/ffmpeg-layer-renderer · 技术介绍动画</div>
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+
+      // Generic helper: reveal a section's text blocks with stagger
+      function revealSection(prefix, start) {
+        tl.fromTo("#" + prefix + "-chapter", { x: -40, opacity: 0 }, { x: 0, opacity: 1, duration: 0.5, ease: "power3.out" }, start);
+        tl.fromTo("#" + prefix + "-kicker", { y: 24, opacity: 0 }, { y: 0, opacity: 1, duration: 0.5, ease: "power3.out" }, start + 0.15);
+        tl.fromTo("#" + prefix + "-title", { y: 40, opacity: 0 }, { y: 0, opacity: 1, duration: 0.6, ease: "power3.out" }, start + 0.3);
+        tl.fromTo("#" + prefix + "-body", { y: 24, opacity: 0 }, { y: 0, opacity: 1, duration: 0.6, ease: "power3.out" }, start + 0.7);
+      }
+
+      // Chapter 1 (0–15)
+      revealSection("c1", 0.3);
+      tl.fromTo("#c1-pills .pill", { y: 20, opacity: 0 }, { y: 0, opacity: 1, duration: 0.4, stagger: 0.12, ease: "power2.out" }, 1.4);
+
+      // Chapter 2 (15–33)
+      revealSection("c2", 15.3);
+      tl.fromTo("#c2-pills .pill", { y: 20, opacity: 0 }, { y: 0, opacity: 1, duration: 0.4, stagger: 0.14, ease: "power2.out" }, 16.4);
+
+      // Chapter 3 (33–51)
+      revealSection("c3", 33.3);
+      tl.fromTo("#c3-metrics .metric", { y: 30, opacity: 0 }, { y: 0, opacity: 1, duration: 0.5, stagger: 0.14, ease: "power3.out" }, 34.4);
+      tl.fromTo("#c3-fill", { width: "0%" }, { width: "92%", duration: 1.6, ease: "power2.inOut" }, 35.2);
+      tl.fromTo("#c3-body", { y: 20, opacity: 0 }, { y: 0, opacity: 1, duration: 0.5, ease: "power3.out" }, 36.4);
+
+      // Chapter 4 (51–64)
+      revealSection("c4", 51.3);
+      tl.fromTo("#c4-cmd", { y: 24, opacity: 0 }, { y: 0, opacity: 1, duration: 0.6, ease: "power3.out" }, 52.4);
+      tl.fromTo("#c4-body", { y: 20, opacity: 0 }, { y: 0, opacity: 1, duration: 0.5, ease: "power3.out" }, 53.4);
+      // gentle pulse on the export button phrase
+      tl.fromTo("#c4-title", { scale: 1 }, { scale: 1.03, duration: 0.5, yoyo: true, repeat: 3, ease: "sine.inOut" }, 54);
+
+      window.__timelines["intro"] = tl;
+    </script>
+  </body>
+</html>

@@ -60,18 +60,13 @@ pre-commit:
       # Scoped to packages/studio — the 600 LOC limit is a studio architecture
       # standard enforced as part of the App.tsx decomposition work. Player and
       # other packages enforce size discipline via code review and convention.
+      # Implemented as a cross-platform .mjs: the previous multi-line bash
+      # `for` loop was executed via `sh -c` by lefthook on Windows, where it
+      # intermittently failed to parse and aborted the whole pre-commit with
+      # exit status 2 even when no file exceeded the limit.
       glob: "packages/studio/**/*.{ts,tsx}"
       exclude: "(\\.test\\.(ts|tsx)$|\\.generated\\.)"
-      run: |
-        for f in {staged_files}; do
-          # Skip test and generated files (exclude pattern backup in case lefthook doesn't filter)
-          case "$f" in *.test.ts|*.test.tsx|*.generated.*) continue ;; esac
-          lines=$(wc -l < "$f")
-          if [ "$lines" -gt 600 ]; then
-            echo "ERROR: $f has $lines lines (max 600)"
-            exit 1
-          fi
-        done
+      run: bun scripts/check-studio-filesize.mjs
 
 commit-msg:
   commands:

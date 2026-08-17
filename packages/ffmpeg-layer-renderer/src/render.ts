@@ -241,6 +241,13 @@ export async function renderCompositionFromHtml(
       resolve(workDir, "assets"),
       fps,
       log,
+      // Map the producer's 0–100 (compile 5 → capture 25–70 → encode 75 →
+      // done 100) onto this pipeline's 5–20% main-layer band.
+      (producerProgress) =>
+        onProgress({
+          progress: 5 + Math.round((producerProgress / 100) * 15),
+          stage: "render-main-layer",
+        }),
     );
   }
 

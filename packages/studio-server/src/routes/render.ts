@@ -73,6 +73,8 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
       // Composition-variable overrides ({variableId: value}), injected as
       // window.__hfVariables — same channel as `hyperframes render --variables`.
       variables?: Record<string, unknown>;
+      // Render engine: standard (default) or layer (ffmpeg-layer-renderer).
+      engine?: string;
     };
     const VALID_FORMATS = new Set(["mp4", "webm", "mov"]);
     const FORMAT_EXT: Record<string, string> = { mp4: ".mp4", webm: ".webm", mov: ".mov" };
@@ -131,6 +133,7 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
       distinctId:
         typeof body.telemetryDistinctId === "string" ? body.telemetryDistinctId : undefined,
       telemetryOptOut: body.telemetryOptOut === true,
+      engine: body.engine === "layer" ? "layer" : "standard",
     });
     (jobState as RenderJobState & { createdAt: number }).createdAt = Date.now();
     renderJobs.set(jobId, jobState as RenderJobState & { createdAt: number });

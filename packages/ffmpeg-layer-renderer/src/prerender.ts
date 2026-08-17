@@ -46,7 +46,22 @@ export async function renderHtmlToMedia(
   outputPath: string,
   fps: number,
   format: "mov" | "webm" | "mp4",
+  onProgress?: (progress: number) => void,
 ): Promise<void> {
+  // Layer renders run inside the studio/preview server process alongside ffmpeg
+  // and the parent V8 heap. Under `auto` worker sizing the producer launches
+  // several concurrent Chrome processes (SwiftShader, ~1.5 GB each), whose peak
+  // RSS plus the encoder can exhaust memory and hard-exit the whole process —
+  // surfacing to the browser as "Connection lost" mid-export. Default to a
+  // single serial worker (lowest memory, most stable) for the layer path; opt
+  // back into parallelism with HF_LAYER_WORKERS=N if the host has headroom.
+  const layerWorkers = (() => {
+    const raw = process.env.HF_LAYER_WORKERS;
+    if (raw === undefined || raw === "") return 1;
+    const n = Number.parseInt(raw, 10);
+    return Number.isFinite(n) && n >= 1 ? n : 1;
+  })();
+
   const request = createRenderRequest({
     projectDir,
     outputPath,
@@ -56,12 +71,18 @@ export async function renderHtmlToMedia(
       format,
       entryFile,
       strictness: "best-effort",
+      workers: layerWorkers,
     },
     engineConfig: resolveConfig({ browserGpuMode: "software" }),
   });
   const config = renderConfigFromRequest(request);
   const job = createRenderJob(config);
-  await executeRenderJob(job, projectDir, outputPath);
+  await executeRenderJob(
+    job,
+    projectDir,
+    outputPath,
+    onProgress ? (j) => onProgress(j.progress) : undefined,
+  );
 }
 
 /**
@@ -88,13 +109,7 @@ export async function prerenderLayer(
 
   const log = options.log ?? (() => {});
   log(`[ffmpeg-layer-renderer] pre-render layer "${layer.id}" → ${assetPath}`);
-  await renderHtmlToMedia(
-    layer.htmlPath,
-    options.projectDir,
-    assetPath,
-    options.fps,
-    format,
-  );
+  await renderHtmlToMedia(layer.htmlPath, options.projectDir, assetPath, options.fps, format);
 
   return {
     layerId: layer.id,
@@ -113,9 +128,10 @@ export async function renderMainLayer(
   assetsDir: string,
   fps: number,
   log: (message: string) => void,
+  onProgress?: (progress: number) => void,
 ): Promise<string> {
   const outputPath = join(assetsDir, "main-layer.mp4");
   log(`[ffmpeg-layer-renderer] render main layer → ${outputPath}`);
-  await renderHtmlToMedia(mainLayerHtmlPath, projectDir, outputPath, fps, "mp4");
+  await renderHtmlToMedia(mainLayerHtmlPath, projectDir, outputPath, fps, "mp4", onProgress);
   return outputPath;
 }

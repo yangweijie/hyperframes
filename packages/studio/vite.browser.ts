@@ -18,8 +18,13 @@ function systemChromePaths(env: NodeJS.ProcessEnv, platform: NodeJS.Platform): s
     return [
       pathWin32.join(programFiles, "Google", "Chrome", "Application", "chrome.exe"),
       pathWin32.join(programFilesX86, "Google", "Chrome", "Application", "chrome.exe"),
+      pathWin32.join(programFiles, "Microsoft", "Edge", "Application", "msedge.exe"),
+      pathWin32.join(programFilesX86, "Microsoft", "Edge", "Application", "msedge.exe"),
       ...(localAppData
-        ? [pathWin32.join(localAppData, "Google", "Chrome", "Application", "chrome.exe")]
+        ? [
+            pathWin32.join(localAppData, "Google", "Chrome", "Application", "chrome.exe"),
+            pathWin32.join(localAppData, "Microsoft", "Edge", "Application", "msedge.exe"),
+          ]
         : []),
     ];
   }

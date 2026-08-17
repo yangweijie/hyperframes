@@ -18,6 +18,7 @@ type StartRenderHandler = (
   quality: "draft" | "standard" | "high",
   resolution: ResolutionPreset | "auto",
   fps: 24 | 30 | 60,
+  engine?: "standard" | "layer",
 ) => void | Promise<void>;
 
 interface RenderQueueProps {
@@ -375,11 +376,31 @@ function FormatExportButton({
           if (isRendering) return;
           const outputResolution = resolveResolution(resolution, compositionDimensions);
           trackStudioEvent("render_start", { format, quality, resolution: outputResolution, fps });
-          void onStartRender(format, quality, outputResolution, fps);
+          void onStartRender(format, quality, outputResolution, fps, "standard");
         }}
         className="w-full text-[11px] font-semibold"
       >
         {isRendering ? "Rendering…" : "Export"}
+      </Button>
+      <Button
+        variant="secondary"
+        size="md"
+        loading={isRendering}
+        onClick={() => {
+          if (isRendering) return;
+          const outputResolution = resolveResolution(resolution, compositionDimensions);
+          trackStudioEvent("render_start", {
+            format: "mp4",
+            quality,
+            resolution: outputResolution,
+            fps,
+            engine: "layer",
+          });
+          void onStartRender("mp4", quality, outputResolution, fps, "layer");
+        }}
+        className="w-full text-[11px] font-semibold"
+      >
+        {isRendering ? "Rendering…" : "Export with FFmpeg"}
       </Button>
       {lastRenderDurationMs !== undefined && !isRendering && (
         <p className="text-[9px] text-panel-text-5 text-center -mt-1.5">

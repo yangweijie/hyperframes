@@ -1,8 +1,24 @@
 import { resolve, dirname } from "node:path";
+import { existsSync } from "node:fs";
 import type { ArgsDef, CommandDef } from "citty";
 import { renderCompositionFromHtml } from "@hyperframes/ffmpeg-layer-renderer";
 import { c } from "../ui/colors.js";
 import { errorBox } from "../ui/format.js";
+
+/**
+ * Resolve a system-installed Chromium-family browser (Microsoft Edge or
+ * Google Chrome) so the layer renderer can fall back to it when the
+ * Hyperframes-managed chrome-headless-shell is missing or corrupted.
+ */
+function findSystemChromium(): string | undefined {
+  const candidates = [
+    "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
+    "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
+    "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+    "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
+  ];
+  return candidates.find((p) => existsSync(p));
+}
 
 const args = {
   input: {
@@ -54,6 +70,26 @@ const layerRenderCommand = {
 
     const projectDir = resolve(dirname(resolve(input)));
     const htmlPath = resolve(input);
+
+    // @hyperframes/producer's runtime loader resolves hyperframe.manifest.json
+    // via paths relative to the producer module; when producer is loaded
+    // transitively through @hyperframes/ffmpeg-layer-renderer (and bundled
+    // into cli.js) that resolution lands on a wrong directory. Pin it to a
+    // known-good location so the layer render can start.
+    if (!process.env.PRODUCER_HYPERFRAME_MANIFEST_PATH) {
+      const manifestCandidates = [
+        resolve(__dirname, "../../producer/dist/hyperframe.manifest.json"),
+        resolve(__dirname, "../../core/dist/hyperframe.manifest.json"),
+      ];
+      const found = manifestCandidates.find((p) => existsSync(p));
+      if (found) process.env.PRODUCER_HYPERFRAME_MANIFEST_PATH = found;
+    }
+    if (!process.env.PRODUCER_HEADLESS_SHELL_PATH) {
+      const systemChromium = findSystemChromium();
+      if (systemChromium) {
+        process.env.PRODUCER_HEADLESS_SHELL_PATH = systemChromium;
+      }
+    }
 
     let result;
     try {

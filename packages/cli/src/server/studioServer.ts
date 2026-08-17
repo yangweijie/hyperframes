@@ -7,7 +7,18 @@
 
 import { Hono, type Context } from "hono";
 import { streamSSE } from "hono/streaming";
-import { existsSync, readFileSync, writeFileSync, statSync, unlinkSync } from "node:fs";
+import {
+  existsSync,
+  readFileSync,
+  writeFileSync,
+  statSync,
+  unlinkSync,
+  cpSync,
+  rmSync,
+  mkdirSync,
+  mkdtempSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
 import { resolve, join, basename } from "node:path";
 import { createProjectWatcher, type ProjectWatcher } from "./fileWatcher.js";
 import {
@@ -23,6 +34,25 @@ import {
   resolveCliTelemetryDistinctId,
 } from "./telemetryIdentity.js";
 import { emitStudioRenderComplete, emitStudioRenderError } from "./studioRenderTelemetry.js";
+
+/**
+ * Resolve a system-installed Chromium-family browser (Microsoft Edge or
+ * Google Chrome) so the layer renderer can fall back to it when the
+ * Hyperframes-managed chrome-headless-shell is missing or corrupted. Edge and
+ * Chrome are Chromium builds and work as a Puppeteer `executablePath`.
+ */
+function findSystemChromium(): string | undefined {
+  const candidates: string[] = [
+    "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
+    "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
+    "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+    "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
+  ];
+  for (const p of candidates) {
+    if (existsSync(p)) return p;
+  }
+  return undefined;
+}
 import { isDevMode } from "../utils/env.js";
 import {
   createStudioManualEditsRenderBodyScript,
@@ -42,6 +72,7 @@ import { resolveAutoProxy } from "../utils/projectConfig.js";
 import { getElementScreenshotClip } from "@hyperframes/studio-server/screenshot-clip";
 import type { ScreenshotClip } from "@hyperframes/studio-server/screenshot-clip";
 import type { RenderJob } from "@hyperframes/producer";
+import { renderCompositionFromHtml } from "@hyperframes/ffmpeg-layer-renderer";
 import { seekCompositionTimeline } from "../capture/captureCompositionFrame.js";
 import {
   assertWebGpuRequirement,
@@ -350,6 +381,42 @@ function rewriteWrittenToHostViewport(projectDir: string, written: string[]): vo
 export function createStudioServer(options: StudioServerOptions): StudioServer {
   const { projectDir, projectName } = options;
   const projectId = projectName || basename(projectDir);
+
+  // ── Process-level crash guards ────────────────────────────────────────
+  // A render worker runs in-process. If a producer/encoder error escapes as an
+  // unhandledRejection (or a stray throw reaches the event loop), Node would
+  // terminate the whole preview server with no message — the browser tab just
+  // shows "Connection lost". Catch and log so the real cause surfaces in the
+  // terminal instead of silently killing the SSE stream.
+  if (!(process as unknown as { __hfStudioCrashGuard?: boolean }).__hfStudioCrashGuard) {
+    (process as unknown as { __hfStudioCrashGuard?: boolean }).__hfStudioCrashGuard = true;
+    process.on("unhandledRejection", (reason, promise) => {
+      console.error(
+        "[Studio] Unhandled promise rejection (render worker may have died):",
+        reason instanceof Error ? (reason.stack ?? reason.message) : reason,
+        "\n  at promise:",
+        promise,
+      );
+    });
+    process.on("uncaughtException", (err) => {
+      console.error(
+        "[Studio] Uncaught exception (render worker may have died):",
+        err instanceof Error ? (err.stack ?? err.message) : err,
+      );
+    });
+  }
+
+  // ── Resolve a system browser as early as possible ─────────────────────
+  // Browser path resolution (and its cached singletons) happens on first
+  // browser launch — which includes the early GPU-mode probe and thumbnails.
+  // If we only set PRODUCER_HEADLESS_SHELL_PATH inside the render branch,
+  // those earlier launches have already cached a (possibly broken) managed
+  // chrome path, so the runtime override is ignored. Set it up front.
+  if (!process.env.PRODUCER_HEADLESS_SHELL_PATH) {
+    const systemChromium = findSystemChromium();
+    if (systemChromium) process.env.PRODUCER_HEADLESS_SHELL_PATH = systemChromium;
+  }
+
   const browserGpuMode = options.browserGpuMode ?? resolveLocalBrowserGpuMode();
   const studioDir = resolveDistDir();
   const runtimePath = resolveRuntimePath();
@@ -468,6 +535,124 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
             }
           }
         };
+
+        if (opts.engine === "layer") {
+          state.stage = "layer-render";
+          try {
+            if (abortController.signal.aborted) {
+              removeCancelledOutput();
+              return;
+            }
+            if (!process.env.PRODUCER_HYPERFRAME_MANIFEST_PATH) {
+              const manifestPath = resolve(
+                __dirname,
+                "../../../core/dist/hyperframe.manifest.json",
+              );
+              if (existsSync(manifestPath)) {
+                process.env.PRODUCER_HYPERFRAME_MANIFEST_PATH = manifestPath;
+              }
+            }
+            if (!process.env.PRODUCER_HEADLESS_SHELL_PATH) {
+              const systemChromium = await findSystemChromium();
+              if (systemChromium) {
+                process.env.PRODUCER_HEADLESS_SHELL_PATH = systemChromium;
+              } else {
+                const { ensureBrowser } = await import("../browser/manager.js");
+                try {
+                  const browser = await ensureBrowser({ preferManagedChrome: true });
+                  if (browser.executablePath) {
+                    process.env.PRODUCER_HEADLESS_SHELL_PATH = browser.executablePath;
+                  }
+                } catch {
+                  /* continue */
+                }
+              }
+            }
+            // The layer render delegates to @hyperframes/producer's runtime
+            // loader, which resolves hyperframe.manifest.json via paths relative
+            // to the producer module. When producer is loaded transitively
+            // through @hyperframes/ffmpeg-layer-renderer (and bundled into
+            // cli.js), that relative resolution lands on a wrong directory, so
+            // we pin the manifest path explicitly to a known-good location.
+            if (!process.env.PRODUCER_HYPERFRAME_MANIFEST_PATH) {
+              const manifestCandidates = [
+                resolve(__dirname, "../../producer/dist/hyperframe.manifest.json"),
+                resolve(__dirname, "../../core/dist/hyperframe.manifest.json"),
+                join(opts.project.dir, "../../../producer/dist/hyperframe.manifest.json"),
+                join(opts.project.dir, "../../../core/dist/hyperframe.manifest.json"),
+              ];
+              const found = manifestCandidates.find((p) => existsSync(p));
+              if (found) process.env.PRODUCER_HYPERFRAME_MANIFEST_PATH = found;
+            }
+            const entry = opts.composition ? opts.composition : "index.html";
+            // Render into a temp project dir OUTSIDE the studio project dir so
+            // materialization artifacts (__main-layer__.html, gsap, layer
+            // assets) never pollute the project — otherwise the compiler sees
+            // two root compositions and the layer render fails / corrupts the
+            // project. Must live outside opts.project.dir: copying the project
+            // into a subdir of itself (e.g. <project>/renders/.layerproj-*)
+            // throws "Cannot copy ... to a subdirectory of self".
+            const tmpProject = mkdtempSync(join(tmpdir(), `hf-layer-${opts.jobId}-`));
+            rmSync(tmpProject, { recursive: true, force: true });
+            mkdirSync(tmpProject, { recursive: true });
+            // Exclude layer-render artifacts that may linger in the studio
+            // project dir — otherwise the temp project inherits a second root
+            // composition and the compile fails with multiple_root_compositions.
+            cpSync(opts.project.dir, tmpProject, {
+              recursive: true,
+              filter: (src) => {
+                const base = basename(src);
+                return (
+                  base !== "__main-layer__.html" && !base.startsWith(".hyperframes-layer-render")
+                );
+              },
+            });
+            const fpsNum = typeof opts.fps === "number" ? opts.fps : opts.fps.num / opts.fps.den;
+            const htmlPath = resolve(tmpProject, entry);
+            const workDir = join(tmpProject, ".work");
+            const result = await renderCompositionFromHtml(htmlPath, {
+              projectDir: tmpProject,
+              workDir,
+              outputPath: opts.outputPath,
+              fps: fpsNum,
+              log: (msg) => {
+                if (msg.includes("composite")) state.stage = "composite";
+                if (msg.includes("prerender")) state.stage = "prerender";
+              },
+              onProgress: (update) => {
+                state.progress = update.progress;
+                if (update.stage) state.stage = update.stage;
+              },
+            });
+            state.status = "complete";
+            state.progress = 100;
+            state.stage = `layer-render · ${result.layers.length} layers`;
+            const metaPath = opts.outputPath.replace(/\.(mp4|webm|mov)$/, ".meta.json");
+            writeFileSync(
+              metaPath,
+              JSON.stringify({ status: "complete", durationMs: Date.now() - startTime }),
+            );
+            refreshTelemetryPosture();
+            emitStudioRenderComplete(opts, Date.now() - startTime, undefined);
+          } catch (err) {
+            if (abortController.signal.aborted) {
+              removeCancelledOutput();
+              return;
+            }
+            state.status = "failed";
+            state.error = err instanceof Error ? err.message : String(err);
+            refreshTelemetryPosture();
+            emitStudioRenderError(opts, Date.now() - startTime, state.stage, err, renderJob);
+            try {
+              const metaPath = opts.outputPath.replace(/\.(mp4|webm|mov)$/, ".meta.json");
+              writeFileSync(metaPath, JSON.stringify({ status: "failed" }));
+            } catch {
+              /* ignore */
+            }
+          }
+          return;
+        }
+
         try {
           const { createRenderJob, executeRenderJob } = await loadStudioProducer();
           const { ensureBrowser } = await import("../browser/manager.js");
